@@ -11,17 +11,17 @@
     document.body.appendChild(renderer.domElement);
 
     var camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.z = 400;
+    camera.position.z = 200;
 
     var scene = new THREE.Scene();
 
     // The number of boids we can render needs to be a power of 2 sized texture e.g.
     // 2x2 or 8x8 or 32x32
-    var nBoids = 64*64;
+    var nBoids = 32*32;
 
     // Bound the boids to a cube, 150units in dimension, centered
     // around 0,0,0
-    var halfBounds = 350 / 2;
+    var halfBounds = 150 / 2;
 
     // NOTE: The quality of the simulation is very much dependant on the values you
     // choose below, you will have to spend some time tweaking them to make the simulation
