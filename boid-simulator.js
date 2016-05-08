@@ -16,10 +16,12 @@ function BoidSimulator(renderer, numBoids, state) {
         throw 'Unsupported boid number, must be either 1, 4, 16, 64, 256, 1024, 4096, 16384';
     }
 
+    this._initState(state);
     this.renderer = renderer;
     this.numBoids = numBoids;
     this.textureDimension = Math.sqrt(this.numBoids);
-    this._initState(state);
+
+    this.stepOffset = 0;
 
     // Pass through vertex shader for computation shaders
     this._ptVertexShader = `
@@ -74,116 +76,11 @@ uniform float uCohesionRadius;
 uniform float uCohesionMultiplier;
 uniform float uAlignmentRadius;
 uniform float uAlignmentMultiplier;
+uniform float uStepSize;
+uniform float uStepOffset;
 
 const float texDim = ` + this.textureDimension.toFixed(1) + `;
-
-vec3 cohesion(in vec3 currentPosition) {
-  vec2 currentIndex = vUv.xy * texDim;
-  const float width=texDim;
-  const float height=texDim;
-  vec3 centroid = vec3(0.0, 0.0, 0.0);
-  float count = 0.0;
-  float radiusSq = uCohesionRadius * uCohesionRadius;
-  float invTexDim = 1.0 / texDim;
-
-  for (float x=0.0; x<width; ++x) {
-    float xPos = x * invTexDim;
-    for (float y=0.0; y<height; ++y) {
-        vec3 neighbourPos = texture2D(posTex, vec2(xPos, y * invTexDim)).xyz;
-        vec3 delta = neighbourPos - currentPosition;
-        float distSq = dot(delta, delta);
-
-/*
-        if (distSq < 0.00001) {
-           continue;
-        }
-        if (distSq > radiusSq) {
-            continue;
-        }
-*/
-        float include = max(0.0, sign(radiusSq - distSq) - 0.5);
-        centroid += include * neighbourPos;
-        count += include * 1.0;
-    }
-  }
-
-  if (count > 0.0) {
-    centroid /= count;
-    return (centroid - currentPosition) * uCohesionMultiplier;
-  }
-  else {
-    return vec3(0.0,0.0,0.0);
-  }
-}
-
-vec3 separation(in vec3 currentPosition) {
-  vec2 currentIndex = vUv.xy * texDim;
-  const float width=texDim;
-  const float height=texDim;
-  vec3 velocity = vec3(0.0, 0.0, 0.0);
-  float radiusSq = uSeparationRadius * uSeparationRadius;
-
-  float invTexDim = 1.0/texDim;
-  for (float x=0.0; x<width; ++x) {
-    float xPos = x * invTexDim;
-    for (float y=0.0; y<height; ++y) {
-        vec3 neighbourPos = texture2D(posTex, vec2(xPos, y * invTexDim)).xyz;
-        vec3 delta = neighbourPos - currentPosition;
-        float distSq = dot(delta, delta);
-/*
-        if (distSq < 0.000001) {
-           continue;
-        }
-        if (distSq > radiusSq) {
-            continue;
-        }
-*/
-        float include = max(0.0, sign(radiusSq - distSq) - 0.5);
-        velocity -= delta * include;
-    }
-  }
-
-  return velocity * uSeparationMultiplier;
-}
-
-vec3 alignment(in vec3 currentVelocity, in vec3 currentPosition) {
-  vec2 currentIndex = vUv.xy * texDim;
-  const float width=texDim;
-  const float height=texDim;
-  vec3 velocity = vec3(0.0, 0.0, 0.0);
-  float count = 0.0;
-  float invTexDim = 1.0 / texDim;
-  float radiusSq = uAlignmentRadius * uAlignmentRadius;
-
-  for (float x=0.0; x<width; ++x) {
-    float xPos = x * invTexDim;
-    for (float y=0.0; y<height; ++y) {
-        vec2 lookup = vec2(xPos, y * invTexDim);
-        vec3 neighbourPos = texture2D(posTex, lookup).xyz;
-        vec3 delta = neighbourPos - currentPosition;
-        float distSq = dot(delta, delta);
-/*
-        if (distSq < 0.000001) {
-           continue;
-        }
-        if (distSq > radiusSq) {
-            continue;
-        }
-*/
-        float include = max(0.0, sign(radiusSq - distSq) - 0.5);
-        velocity += texture2D(velTex, lookup).xyz * include;
-        count += 1.0 * include;
-    }
-  }
-
-  if (count > 0.0) {
-   velocity /= count;
-   return (velocity - currentVelocity) * uAlignmentMultiplier;
-  }
-  else {
-    return vec3(0.0,0.0,0.0);
-  }
-}
+const float xSize = ` + (this.textureDimension / this.state.stepSize).toFixed(1) + `;
 
 vec3 clampVel(in vec3 v) {
   vec3 newVel = normalize(v) * min(uMaxSpeed, max(length(v), uMinSpeed));
@@ -204,10 +101,11 @@ vec3 all(in vec3 currentVelocity, in vec3 currentPosition) {
   float radiusAlignmentSq = uAlignmentRadius * uAlignmentRadius;
   float invTexDim = 1.0 / texDim;
 
-  for (float x=0.0; x<width; ++x) {
-    float xPos = x * invTexDim;
+  for (float x=0.0; x<xSize; ++x) {
+    float xPos = (uStepOffset + x * uStepSize) * invTexDim;
     for (float y=0.0; y<height; ++y) {
-        vec2 lookup = vec2(xPos, y * invTexDim);
+        float yPos = y * invTexDim;
+        vec2 lookup = vec2(xPos, yPos);
         vec3 neighbourPos = texture2D(posTex, lookup).xyz;
         vec3 delta = neighbourPos - currentPosition;
         float distSq = dot(delta, delta);
@@ -278,13 +176,7 @@ void main() {
   vec3 currentPosition = texture2D(posTex, vUv.xy).xyz;
   vec3 currentVelocity = texture2D(velTex, vUv.xy).xyz;
 
-//  vec3 c = cohesion(currentPosition);
-//  vec3 s = separation(currentPosition);
-//  vec3 a = alignment(currentVelocity, currentPosition);
-//  vec3 avd = avoid(currentPosition);
   vec3 aa = all(currentVelocity, currentPosition);
-
-//  vec3 newVel = oldVel + 0.2 * (clampVel(c) + clampVel(s) + clampVel(a) );
   vec3 newVel = oldVel + 0.2 * aa;
   vec3 b = bound(currentPosition + newVel);
   newVel += b;
@@ -307,8 +199,8 @@ BoidSimulator.prototype = {
             vertexShader: this._ptVertexShader,
             fragmentShader: this._ptFragShader
         });
-        var mesh = new THREE.Mesh(new THREE.PlaneBufferGeometry(2,2), this._ptMaterial);
-        this._ptScene.add(mesh);
+        this._ptMesh = new THREE.Mesh(new THREE.PlaneBufferGeometry(2,2), this._ptMaterial);
+        this._ptScene.add(this._ptMesh);
 
         // Create the initial random positions and velocities
         var positions = this._randomPositions();
@@ -322,6 +214,10 @@ BoidSimulator.prototype = {
         this._renderTextureToTarget(velocities, this._vel1);
         this._renderTextureToTarget(velocities, this._vel2);
 
+        positions.dispose();
+        velocities.dispose();
+        positions = velocities = null;
+
         // Setup the shader which will process the positions
         this._posMaterial = new THREE.ShaderMaterial({
             uniforms: {
@@ -332,8 +228,8 @@ BoidSimulator.prototype = {
             fragmentShader: this._posFragShader
         });
         this._posScene = new THREE.Scene();
-        var posMesh = new THREE.Mesh(new THREE.PlaneBufferGeometry(2,2), this._posMaterial);
-        this._posScene.add(posMesh);
+        this._posMesh = new THREE.Mesh(new THREE.PlaneBufferGeometry(2,2), this._posMaterial);
+        this._posScene.add(this._posMesh);
 
         var bounds = this.state.bounds;
         this._velMaterial = new THREE.ShaderMaterial({
@@ -354,14 +250,29 @@ BoidSimulator.prototype = {
                 uCohesionRadius: { value: this.state.cohesionRadius },
                 uCohesionMultiplier: { value: this.state.cohesionMultiplier },
                 uAlignmentRadius: { value: this.state.alignmentRadius },
-                uAlignmentMultiplier: { value: this.state.alignmentMultiplier }
+                uAlignmentMultiplier: { value: this.state.alignmentMultiplier },
+                uStepSize: { value: this.state.stepSize },
+                uStepOffset: { value: 0 }
             },
             vertexShader: this._ptVertexShader,
             fragmentShader: this._velFragShader
         });
         this._velScene = new THREE.Scene();
-        var velMesh = new THREE.Mesh(new THREE.PlaneBufferGeometry(2,2), this._velMaterial);
-        this._velScene.add(velMesh);
+        this._velMesh = new THREE.Mesh(new THREE.PlaneBufferGeometry(2,2), this._velMaterial);
+        this._velScene.add(this._velMesh);
+    },
+
+    dispose: function() {
+        this._pos1.dispose();
+        this._pos2.dispose();
+        this._vel1.dispose();
+        this._vel2.dispose();
+        this._velMesh.material.dispose();
+        this._velMesh.geometry.dispose();
+        this._posMesh.material.dispose();
+        this._posMesh.geometry.dispose();
+        this._ptMesh.material.dispose();
+        this._ptMesh.geometry.dispose();
     },
 
         /**
@@ -382,6 +293,7 @@ BoidSimulator.prototype = {
     * @param {number} state.cohesionMultiplier
     * @param {number} state.alignmentRadius
     * @param {number} state.alignmentMultiplier
+    * @param {number} state.stepSize;
     * state.bounds: 
     */
     _initState: function(state) {
@@ -416,6 +328,9 @@ BoidSimulator.prototype = {
         if (this.state.alignmentMultiplier == undefined) {
             throw 'You must specify a state.alignmentMultiplier value';
         }
+        if (this.state.stepSize == undefined) {
+            throw 'You must specify a state.stepSize value';
+        }
     },
 
     _renderTextureToTarget: function(texture, target) {
@@ -427,6 +342,9 @@ BoidSimulator.prototype = {
 
         this._stepVelocities();
         this._stepPositions();
+
+        this.stepOffset = (this.stepOffset + this.state.stepSize) % this.state.stepSize;
+        this._velMaterial.uniforms.uStepOffset.value = this.stepOffset;
 
         //Texture tick-tock, will swap the outputs of one render
         //cycle to be the inputs of the next cycle

@@ -28,6 +28,14 @@ BoidRenderer.prototype = {
     },
 
     /**
+    * Release all THREE resources
+    */
+    dispose: function() {
+        this._mesh.material.dispose();
+        this._mesh.geometry.dispose();
+    },
+
+    /**
     * Should be called after the boid simulator has been updated each frame so
     * we have the latest values
     */
@@ -41,9 +49,6 @@ BoidRenderer.prototype = {
     _addBoidsToScene(scene) {
         var numBoids = this._simulator.numBoids;
         var geometry = new THREE.BufferGeometry();
-
-        //TODO: Remove
-        var TEX_DIM = this._simulator.textureDimension;
 
         // Each boid is rendered as a cuboid, we add numBoids copies of the Box geometry
         // to the scene, all at position 0,0,0, the custom shader then reads the positions
@@ -101,7 +106,10 @@ BoidRenderer.prototype = {
             vertexShader: BoidRenderer._vertShader,
             fragmentShader: BoidRenderer._fragShader
         });
-        scene.add(new THREE.Mesh(geometry, this._shaderMaterial));
+        this._mesh = new THREE.Mesh(geometry, this._shaderMaterial);
+        scene.add(this._mesh);
+
+        cuboid.dispose();
     },
 
     _addBoundsToScene: function(scene) {

@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title></title>
+    <title>WebGL - Boid Simulation</title>
     <style>
       body {
         margin:0;
@@ -10,10 +10,18 @@
       </style>
   </head>
   <body>
+    <div style="padding-left: 100px;">
+      Number of boids: 
+      <a href="index.html?numBoids=256">256</a>
+      <a href="index.html?numBoids=1024">1024</a>
+      <a href="index.html?numBoids=4096">4096</a>
+      <a href="index.html?numBoids=16384">16384</a>
+    </div>
     <script src="stats.js"></script>
+    <script src="dat.gui.js"></script>
     <script src="three.js"></script>
-    <script src="sim.js"></script>
-    <script src="renderer.js"></script>
+    <script src="boid-simulator.js"></script>
+    <script src="boid-renderer.js"></script>
     <script src="main.js"></script>
   </body>
 </html>
